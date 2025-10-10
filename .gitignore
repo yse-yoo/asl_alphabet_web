@@ -1,0 +1,8 @@
+asl_words_train/*
+models/*
+node_modules/*
+__pycache__/*
+.venv/*
+.env
+.DS_Store
+.vscode/*
