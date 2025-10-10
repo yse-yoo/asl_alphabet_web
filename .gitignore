@@ -1,4 +1,5 @@
 asl_words_train/*
+static/uploads/*
 models/*
 node_modules/*
 __pycache__/*
