@@ -116,9 +116,9 @@ async def index():
     with open("static/index.html", "r", encoding="utf-8") as f:
         return HTMLResponse(f.read())
 
-@app.get("/camera")
+@app.get("/app")
 async def camera_page():
-    with open("static/camera.html", "r", encoding="utf-8") as f:
+    with open("static/app1.html", "r", encoding="utf-8") as f:
         return HTMLResponse(f.read())
 
 # ==============================

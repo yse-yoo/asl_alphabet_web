@@ -3,6 +3,10 @@ const canvas = document.getElementById("outputCanvas");
 const ctx = canvas.getContext("2d");
 const sendBtn = document.getElementById("sendBtn");
 
+let latestHands = [];
+let latestPoses = [];
+const margin = 100;
+
 let detectorHands, detectorPose;
 const videoWidth = 960;
 const videoHeight = 680;
@@ -33,7 +37,7 @@ async function setupModels() {
   // --- Pose モデル ---
   const modelPose = poseDetection.SupportedModels.MoveNet;
   detectorPose = await poseDetection.createDetector(modelPose, {
-    modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING, 
+    modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING,
   });
 }
 
@@ -42,6 +46,10 @@ async function detect() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   const hands = await detectorHands.estimateHands(video);
   const poses = await detectorPose.estimatePoses(video);
+
+  // 最新の検出結果を保存  
+  latestHands = hands;
+  latestPoses = poses;
 
   // 骨格を描画
   ctx.strokeStyle = "cyan";
@@ -82,27 +90,24 @@ async function detect() {
 
 // 🔘 上半身ごと送信
 function sendUpperBody() {
+  const bbox = getBoundingBox(latestHands, latestPoses);
+  if (!bbox) {
+    alert("手または上半身が検出されていません。");
+    return;
+  }
+
+  const { x, y, w, h } = bbox;
+
   const sendCanvas = document.createElement("canvas");
   const sendCtx = sendCanvas.getContext("2d");
+  sendCanvas.width = w;
+  sendCanvas.height = h;
 
-  // 全体のうち上半身（顔～胸あたり）を切り抜き
-  const cropY = video.videoHeight * 0.15; // 顔より少し下
-  const cropH = video.videoHeight * 0.55; // 胸のあたりまで
-  const cropX = 0;
-  const cropW = video.videoWidth;
-
-  sendCanvas.width = cropW;
-  sendCanvas.height = cropH;
-
-  sendCtx.drawImage(
-    video,
-    cropX, cropY, cropW, cropH, // 元画像から上半身領域を切り抜き
-    0, 0, cropW, cropH
-  );
+  sendCtx.drawImage(video, x, y, w, h, 0, 0, w, h);
 
   sendCanvas.toBlob(async (blob) => {
     const formData = new FormData();
-    formData.append("file", blob, "upperbody.jpg");
+    formData.append("file", blob, "cropped.jpg");
 
     const res = await fetch("/predict", { method: "POST", body: formData });
     const data = await res.json();
@@ -115,6 +120,41 @@ function sendUpperBody() {
     }
   }, "image/jpeg");
 }
+
+
+function getBoundingBox(hands, poses) {
+  const xs = [];
+  const ys = [];
+
+  // --- Hands の keypoints 座標 ---
+  hands.forEach(hand => {
+    hand.keypoints.forEach(pt => {
+      xs.push(pt.x);
+      ys.push(pt.y);
+    });
+  });
+
+  // --- Pose の keypoints 座標 ---
+  poses.forEach(pose => {
+    pose.keypoints.forEach(pt => {
+      if (pt.score > 0.4) {
+        xs.push(pt.x);
+        ys.push(pt.y);
+      }
+    });
+  });
+
+  if (xs.length === 0 || ys.length === 0) return null;
+
+  // bbox計算（Pythonのmin_x, max_x, ... と同じ考え方）
+  const minX = Math.max(0, Math.min(...xs) - margin);
+  const maxX = Math.min(video.videoWidth, Math.max(...xs) + margin);
+  const minY = Math.max(0, Math.min(...ys) - margin);
+  const maxY = Math.min(video.videoHeight, Math.max(...ys) + margin);
+
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+}
+
 
 sendBtn.addEventListener("click", sendUpperBody);
 document.addEventListener("keydown", (event) => {
